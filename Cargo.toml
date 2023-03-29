@@ -1,0 +1,20 @@
+[package]
+name = "curly_yaml"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["serde_yaml"]
+
+[dependencies]
+serde = "1.0.159"
+serde_yaml = { version = "0.9.19", optional = true }
+urlencoding = "2.1.2"
+
+[dev-dependencies]
+serde = { version = "1.0.159", features = ["derive"] }
+serde_yaml = "0.9.19"
+
+[[bin]]
+name = "cyrly"
+path = "src/bin.rs"
