@@ -11,6 +11,7 @@ use serde::{
 
 pub struct CurlySerializer<'a, E> {
     level: usize,
+    multiline: bool,
     glut: &'a mut E,
 }
 
@@ -28,7 +29,7 @@ impl Eat for String {
     }
 }
 
-struct ShortSinglelineEater(String, usize);
+struct ShortEater(String, usize);
 #[derive(Debug)]
 struct Fallible;
 impl std::fmt::Display for Fallible {
@@ -38,46 +39,34 @@ impl std::fmt::Display for Fallible {
 }
 impl std::error::Error for Fallible {}
 impl ser::Error for Fallible {
-    fn custom<T>(_: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
+    fn custom<T: std::fmt::Display>(_: T) -> Self {
         Self
     }
 }
-impl Eat for ShortSinglelineEater {
+impl Eat for ShortEater {
     type Error = Fallible;
 
     fn eat(&mut self, data: &str) -> Result<(), Self::Error> {
-        let mut data = data.chars().peekable();
-        while let Some(char) = data.next() {
-            if self.1 == 0 {
+        for char in data.chars() {
+            if self.1.checked_sub(1).map(|u| self.1 = u).is_none() {
                 return Err(Fallible);
             }
-            self.1 -= 1;
-            if char == '\n' {
-                while let Some(' ') = data.peek() {
-                    data.next();
-                }
-                self.0.push(' ');
-            } else {
-                self.0.push(char);
-            }
+            self.0.push(char);
         }
         Ok(())
     }
 }
 
-impl<E: Eat> Serializer for CurlySerializer<'_, E> {
+impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
     type Ok = ();
     type Error = <E as Eat>::Error;
-    type SerializeSeq = Self;
-    type SerializeTuple = Self;
-    type SerializeTupleStruct = Self;
-    type SerializeTupleVariant = Self;
-    type SerializeMap = Self;
-    type SerializeStruct = Self;
-    type SerializeStructVariant = Self;
+    type SerializeSeq = CurlySeq<'e, E>;
+    type SerializeTuple = CurlySeq<'e, E>;
+    type SerializeTupleStruct = CurlySeq<'e, E>;
+    type SerializeTupleVariant = CurlySeq<'e, E>;
+    type SerializeMap = CurlyMap<'e, E>;
+    type SerializeStruct = CurlyMap<'e, E>;
+    type SerializeStructVariant = CurlyMap<'e, E>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         self.glut.eat(&v.to_string())
@@ -222,80 +211,8 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         value.serialize(self)
     }
 
-    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        self.glut.eat("[\n")?;
-
-        impl<E: Eat> SerializeSeq for CurlySerializer<'_, E> {
-            type Ok = ();
-
-            type Error = <E as Eat>::Error;
-
-            fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
-            where
-                T: serde::Serialize,
-            {
-                self.indent(true)?;
-                value.serialize(self.next_level())?;
-                self.glut.eat(",\n")
-            }
-
-            fn end(self) -> Result<Self::Ok, Self::Error> {
-                Self::end(self, "]")
-            }
-        }
-
-        Ok(self)
-    }
-
-    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        self.glut.eat("{\n")?;
-        impl<E: Eat> SerializeMap for CurlySerializer<'_, E> {
-            type Ok = ();
-
-            type Error = <E as Eat>::Error;
-
-            fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<(), Self::Error>
-            where
-                T: serde::Serialize,
-            {
-                self.indent(true)?;
-
-                let mut singleline = ShortSinglelineEater(String::new(), 80);
-                let res = key.serialize(CurlySerializer {
-                    level: 0,
-                    glut: &mut singleline,
-                });
-                let res = res.is_ok().then_some(singleline.0);
-                if let Some(singleline) = res {
-                    self.glut.eat(&singleline)?;
-                } else {
-                    self.glut.eat("? ")?;
-                    key.serialize(self.next_level())?;
-                    self.glut.eat("\n")?;
-                    self.indent(true)?;
-                }
-                Ok(())
-            }
-
-            fn serialize_value<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
-            where
-                T: serde::Serialize,
-            {
-                self.glut.eat(": ")?;
-                value.serialize(self.next_level())?;
-                self.glut.eat(",\n")
-            }
-
-            fn end(self) -> Result<Self::Ok, Self::Error> {
-                Self::end(self, "}")
-            }
-        }
-
-        Ok(self)
-    }
-
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        impl<E: Eat> SerializeTuple for CurlySerializer<'_, E> {
+        impl<E: Eat> SerializeTuple for CurlySeq<'_, E> {
             type Ok = ();
 
             type Error = <E as Eat>::Error;
@@ -320,7 +237,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         _name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        impl<E: Eat> SerializeTupleStruct for CurlySerializer<'_, E> {
+        impl<E: Eat> SerializeTupleStruct for CurlySeq<'_, E> {
             type Ok = ();
 
             type Error = <E as Eat>::Error;
@@ -347,7 +264,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        impl<E: Eat> SerializeTupleVariant for CurlySerializer<'_, E> {
+        impl<E: Eat> SerializeTupleVariant for CurlySeq<'_, E> {
             type Ok = ();
 
             type Error = <E as Eat>::Error;
@@ -373,7 +290,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         _name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        impl<E: Eat> SerializeStruct for CurlySerializer<'_, E> {
+        impl<E: Eat> SerializeStruct for CurlyMap<'_, E> {
             type Ok = ();
 
             type Error = <E as Eat>::Error;
@@ -406,7 +323,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        impl<E: Eat> SerializeStructVariant for CurlySerializer<'_, E> {
+        impl<E: Eat> SerializeStructVariant for CurlyMap<'_, E> {
             type Ok = ();
 
             type Error = <E as Eat>::Error;
@@ -430,6 +347,14 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         self.serialize_variant_name(variant)?;
         self.serialize_struct(name, len)
     }
+
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        CurlySeq::new(self)
+    }
+
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        CurlyMap::new(self)
+    }
 }
 
 fn is_yaml_benign_str(v: &str) -> bool {
@@ -446,7 +371,11 @@ fn is_yaml_special_str(v: &str) -> bool {
 
 impl<'e, E: Eat> CurlySerializer<'e, E> {
     pub fn new(glut: &'e mut E) -> Self {
-        Self { level: 0, glut }
+        Self {
+            level: 0,
+            multiline: true,
+            glut,
+        }
     }
 
     fn serialize_variant_name(
@@ -460,24 +389,184 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
     }
 
     fn indent(&mut self, extra: bool) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
-        for _ in 0..self.level {
-            self.glut.eat("  ")?;
+        if self.multiline {
+            for _ in 0..self.level {
+                self.glut.eat("  ")?;
+            }
+            if extra {
+                self.glut.eat("  ")?;
+            }
+        } else {
+            self.glut.eat(" ")?;
         }
-        Ok(if extra {
-            self.glut.eat("  ")?;
-        })
+        Ok(())
     }
 
     fn next_level(&mut self) -> CurlySerializer<E> {
         CurlySerializer {
             level: self.level + 1,
+            multiline: self.multiline,
             glut: self.glut,
         }
+    }
+
+    pub fn multiline(self) -> Self {
+        CurlySerializer {
+            level: self.level,
+            multiline: true,
+            glut: self.glut,
+        }
+    }
+
+    pub fn oneline(self) -> Self {
+        CurlySerializer {
+            level: self.level,
+            multiline: false,
+            glut: self.glut,
+        }
+    }
+
+    fn start(&mut self, start: &str) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
+        self.glut.eat(start)?;
+        if self.multiline {
+            self.glut.eat("\n")?;
+        }
+        Ok(())
     }
 
     fn end(mut self, arg: &str) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
         self.indent(false)?;
         self.glut.eat(arg)?;
         Ok(())
+    }
+}
+
+pub struct CurlySeq<'a, E> {
+    first: bool,
+    ser: CurlySerializer<'a, E>,
+}
+impl<'e, E: Eat> CurlySeq<'e, E> {
+    fn new(
+        mut ser: CurlySerializer<'e, E>,
+    ) -> Result<Self, <CurlySerializer<'e, E> as Serializer>::Error> {
+        CurlySerializer::start(&mut ser, "[")?;
+        Ok(CurlySeq { first: true, ser })
+    }
+}
+impl<E: Eat> SerializeSeq for CurlySeq<'_, E> {
+    type Ok = ();
+
+    type Error = <E as Eat>::Error;
+
+    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: serde::Serialize,
+    {
+        match self.ser.multiline || self.first {
+            true => self.first = false,
+            false => self.ser.glut.eat(",")?,
+        }
+        self.ser.indent(true)?;
+        value.serialize(self.ser.next_level())?;
+        if self.ser.multiline {
+            self.ser.glut.eat(",\n")?;
+        }
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        CurlySerializer::end(self.ser, "]")
+    }
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum MapNext {
+    Key,
+    Value,
+}
+pub struct CurlyMap<'e, E> {
+    next: MapNext,
+    first: bool,
+    ser: CurlySerializer<'e, E>,
+}
+impl<'e, E: Eat> CurlyMap<'e, E> {
+    fn new(
+        mut ser: CurlySerializer<'e, E>,
+    ) -> Result<Self, <CurlySerializer<'e, E> as Serializer>::Error> {
+        CurlySerializer::start(&mut ser, "{")?;
+        Ok(CurlyMap {
+            first: true,
+            next: MapNext::Key,
+            ser,
+        })
+    }
+    fn next(&mut self, next: MapNext) -> Result<(), <CurlyMap<E> as SerializeMap>::Error> {
+        use MapNext::*;
+        match (self.next, next) {
+            (Key, Value) => self.serialize_key(&())?,
+            (Value, Key) => self.serialize_value(&())?,
+            _ => (),
+        }
+        match next {
+            Key => self.next = Value,
+            Value => self.next = Key,
+        }
+        Ok(())
+    }
+}
+
+impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
+    type Ok = ();
+
+    type Error = <E as Eat>::Error;
+
+    fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<(), Self::Error>
+    where
+        T: serde::Serialize,
+    {
+        self.next(MapNext::Key)?;
+        match self.ser.multiline || self.first {
+            true => self.first = false,
+            false => self.ser.glut.eat(",")?,
+        }
+        self.ser.indent(true)?;
+
+        if self.ser.multiline {
+            let mut short = ShortEater(String::new(), 80);
+            let res = key.serialize(CurlySerializer {
+                glut: &mut short,
+                multiline: false,
+                level: self.ser.level,
+            });
+            let res = res.is_ok().then_some(short.0);
+            if let Some(singleline) = res {
+                self.ser.glut.eat(&singleline)?;
+            } else {
+                self.ser.glut.eat("? ")?;
+                key.serialize(self.ser.next_level())?;
+                self.ser.glut.eat("\n")?;
+                self.ser.indent(true)?;
+            }
+        } else {
+            key.serialize(self.ser.next_level())?;
+        }
+        Ok(())
+    }
+
+    fn serialize_value<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: serde::Serialize,
+    {
+        self.next(MapNext::Value)?;
+        self.ser.glut.eat(": ")?;
+        value.serialize(self.ser.next_level())?;
+        if self.ser.multiline {
+            self.ser.glut.eat(",\n")?;
+        }
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        CurlySerializer::end(self.ser, "}")
     }
 }
