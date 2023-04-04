@@ -393,7 +393,7 @@ fn is_yaml_benign_str(v: &str) -> bool {
 fn is_yaml_special_str(v: &str) -> bool {
     matches!(
         v.to_ascii_lowercase().as_str(),
-        "y" | "yes" | "n" | "no" | "true" | "false" | "on" | "off"
+        "y" | "yes" | "n" | "no" | "true" | "false" | "on" | "off" | "null"
     )
 }
 
