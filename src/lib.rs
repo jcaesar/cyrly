@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-
 #[cfg(test)]
 mod test;
 
@@ -40,7 +38,7 @@ impl std::fmt::Display for Fallible {
 }
 impl std::error::Error for Fallible {}
 impl ser::Error for Fallible {
-    fn custom<T>(msg: T) -> Self
+    fn custom<T>(_: T) -> Self
     where
         T: std::fmt::Display,
     {
@@ -186,7 +184,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         self.serialize_none()
     }
 
-    fn serialize_unit_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error> {
+    fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
         self.serialize_unit()
     }
 
@@ -201,7 +199,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
 
     fn serialize_newtype_struct<T: ?Sized>(
         self,
-        name: &'static str,
+        _name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
@@ -224,7 +222,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         value.serialize(self)
     }
 
-    fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
         self.glut.eat("[\n")?;
 
         impl<E: Eat> SerializeSeq for CurlySerializer<'_, E> {
@@ -249,7 +247,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
         Ok(self)
     }
 
-    fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
         self.glut.eat("{\n")?;
         impl<E: Eat> SerializeMap for CurlySerializer<'_, E> {
             type Ok = ();
@@ -372,7 +370,7 @@ impl<E: Eat> Serializer for CurlySerializer<'_, E> {
 
     fn serialize_struct(
         self,
-        name: &'static str,
+        _name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
         impl<E: Eat> SerializeStruct for CurlySerializer<'_, E> {
