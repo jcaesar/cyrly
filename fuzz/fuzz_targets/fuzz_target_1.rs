@@ -41,6 +41,15 @@ struct Problem {
 fuzz_target!(|problem: Problem| {
     let data: serde_yaml::Value = problem.data.into();
 
+    // Require that serde_yaml is able to read its own stuff first - there seems to be more bugs in there than in my stuff
+    let (yamlser, yamlde) = match serde_yaml::to_string(&data) {
+        Ok(yamlser) => match serde_yaml::from_str::<serde_yaml::Value>(&yamlser) {
+            Ok(yamlde) => (yamlser, yamlde),
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+
     let mut out = String::new();
 
     let mut curl = curly_yaml::CurlySerializer::new(&mut out);
@@ -49,16 +58,12 @@ fuzz_target!(|problem: Problem| {
 
     let de = serde_yaml::from_str::<serde_yaml::Value>(&out);
     if cfg!(feature = "debuglog") {
-        let yamlser = serde_yaml::to_string(&data);
-        match &yamlser {
-            Ok(yamlser) => println!("---\n# Serialized with serde_yaml\n{}\n# END", yamlser),
-            Err(_) => {
-                dbg!(&yamlser);
-            }
-        }
+        println!("---\n# Serialized with serde_yaml\n{}\n# END", yamlser);
         println!("---\n# Serialized with curly_yaml\n{out}\n# END");
-        dbg!(&data, problem.multiline, de.as_ref().unwrap());
-        dbg!(serde_yaml::from_str::<serde_yaml::Value>(&yamlser.unwrap())).ok();
+        dbg!(&data, yamlde, problem.multiline, de.as_ref().unwrap());
+    }
+    if out.lines().any(|l| l.len() > 500) {
+        return; // Seems serde_yaml chokes on some overly long lines
     }
     if !de.as_ref().map_or(false, |de| de == &data) {
         panic!()
