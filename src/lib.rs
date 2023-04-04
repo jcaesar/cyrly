@@ -29,6 +29,34 @@ impl Eat for String {
     }
 }
 
+pub struct WriteEat<T>(T);
+impl<T: std::io::Write> Eat for WriteEat<T> {
+    type Error = WriteEatError;
+
+    fn eat(&mut self, data: &str) -> Result<(), Self::Error> {
+        self.0.write_all(data.as_bytes()).map_err(WriteEatError)
+    }
+}
+#[derive(Debug)]
+pub struct WriteEatError(std::io::Error);
+impl std::fmt::Display for WriteEatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl std::error::Error for WriteEatError {}
+impl serde::ser::Error for WriteEatError {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
+        WriteEatError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{msg}"),
+        ))
+    }
+}
+
 struct ShortEater(String, usize);
 #[derive(Debug)]
 struct Fallible;
