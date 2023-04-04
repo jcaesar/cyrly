@@ -418,6 +418,7 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
 
     fn indent(&mut self, extra: bool) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
         if self.multiline {
+            self.glut.eat("\n")?;
             for _ in 0..self.level {
                 self.glut.eat("  ")?;
             }
@@ -456,9 +457,6 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
 
     fn start(&mut self, start: &str) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
         self.glut.eat(start)?;
-        if self.multiline {
-            self.glut.eat("\n")?;
-        }
         Ok(())
     }
 
@@ -497,7 +495,7 @@ impl<E: Eat> SerializeSeq for CurlySeq<'_, E> {
         self.ser.indent(true)?;
         value.serialize(self.ser.next_level())?;
         if self.ser.multiline {
-            self.ser.glut.eat(",\n")?;
+            self.ser.glut.eat(",")?;
         }
         Ok(())
     }
@@ -572,7 +570,6 @@ impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
             } else {
                 self.ser.glut.eat("? ")?;
                 key.serialize(self.ser.next_level())?;
-                self.ser.glut.eat("\n")?;
                 self.ser.indent(true)?;
             }
         } else {
@@ -589,7 +586,7 @@ impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
         self.ser.glut.eat(": ")?;
         value.serialize(self.ser.next_level())?;
         if self.ser.multiline {
-            self.ser.glut.eat(",\n")?;
+            self.ser.glut.eat(",")?;
         }
         Ok(())
     }
