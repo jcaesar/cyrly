@@ -460,8 +460,14 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         Ok(())
     }
 
-    fn end(mut self, arg: &str) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
-        self.indent(false)?;
+    fn end(
+        mut self,
+        arg: &str,
+        empty: bool,
+    ) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
+        if !empty {
+            self.indent(false)?;
+        }
         self.glut.eat(arg)?;
         Ok(())
     }
@@ -501,7 +507,7 @@ impl<E: Eat> SerializeSeq for CurlySeq<'_, E> {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        CurlySerializer::end(self.ser, "]")
+        CurlySerializer::end(self.ser, "]", self.first)
     }
 }
 
@@ -592,6 +598,6 @@ impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        CurlySerializer::end(self.ser, "}")
+        CurlySerializer::end(self.ser, "}", self.first)
     }
 }
