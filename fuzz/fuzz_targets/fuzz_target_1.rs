@@ -12,7 +12,8 @@ pub enum Value {
     String(String),
     Sequence(Vec<Value>),
     Mapping(Vec<(Value, Value)>),
-    // Tagged(Box<(String, Value)>),
+    // TaggdValues are serialized by recognizing 1-element maps with a "!…" key in serde_yaml.
+    // I don't think I want to reproduce that hackery in my little lib
 }
 
 impl Into<serde_yaml::Value> for Value {
@@ -27,30 +28,39 @@ impl Into<serde_yaml::Value> for Value {
             Value::Mapping(s) => {
                 Mapping(s.into_iter().map(|(k, v)| (k.into(), v.into())).collect())
             }
-            // Value::Tagged(bx) => Tagged(Box::new(serde_yaml::value::TaggedValue {
-            //     tag: serde_yaml::value::Tag::new(bx.0),
-            //     value: bx.1.into(),
-            // })),
         }
     }
 }
 
-fuzz_target!(|data: Value| {
-    let data: serde_yaml::Value = data.into();
+#[derive(Arbitrary, Debug)]
+struct Problem {
+    multiline: bool,
+    data: Value,
+}
+
+fuzz_target!(|problem: Problem| {
+    let data: serde_yaml::Value = problem.data.into();
 
     let mut out = String::new();
 
-    data.serialize(curly_yaml::CurlySerializer::new(&mut out))
-        .unwrap();
+    let mut curl = curly_yaml::CurlySerializer::new(&mut out);
+    curl.multiline = problem.multiline;
+    data.serialize(curl).unwrap();
 
     let de = serde_yaml::from_str::<serde_yaml::Value>(&out);
+    if cfg!(feature = "debuglog") {
+        let yamlser = serde_yaml::to_string(&data);
+        match &yamlser {
+            Ok(yamlser) => println!("---\n# Serialized with serde_yaml\n{}\n# END", yamlser),
+            Err(_) => {
+                dbg!(&yamlser);
+            }
+        }
+        println!("---\n# Serialized with curly_yaml\n{out}\n# END");
+        dbg!(&data, problem.multiline, de.as_ref().unwrap());
+        dbg!(serde_yaml::from_str::<serde_yaml::Value>(&yamlser.unwrap())).ok();
+    }
     if !de.as_ref().map_or(false, |de| de == &data) {
-        println!(
-            "---\n# Serialized with serde_yaml\n{}\n\n",
-            serde_yaml::to_string(&data).unwrap()
-        );
-        println!("---\n# Serialized with curly_yaml\n{out}");
-        dbg!(data, de.unwrap());
         panic!()
     }
 });

@@ -34,3 +34,6 @@ name = "yaml-input"
 path = "fuzz_targets/yaml-input.rs"
 test = false
 doc = false
+
+[features]
+debuglog = []

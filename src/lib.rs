@@ -11,7 +11,7 @@ use serde::{
 
 pub struct CurlySerializer<'a, E> {
     level: usize,
-    multiline: bool,
+    pub multiline: bool,
     glut: &'a mut E,
 }
 
