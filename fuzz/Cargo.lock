@@ -30,6 +30,7 @@ dependencies = [
 name = "curly_yaml"
 version = "0.1.0"
 dependencies = [
+ "ryu",
  "serde",
  "serde_yaml",
  "urlencoding",

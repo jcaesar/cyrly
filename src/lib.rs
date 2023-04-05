@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 #[cfg(test)]
 mod test;
 
@@ -133,11 +135,21 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
     }
 
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&format!("{v:.1}"))
+        self.serialize_float(
+            v.is_nan(),
+            v == f32::INFINITY,
+            v == f32::NEG_INFINITY,
+            |glut| glut.eat(ryu::Buffer::new().format_finite(v)),
+        )
     }
 
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&format!("{v:.1}"))
+        self.serialize_float(
+            v.is_nan(),
+            v == f64::INFINITY,
+            v == f64::NEG_INFINITY,
+            |glut| glut.eat(ryu::Buffer::new().format_finite(v)),
+        )
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
@@ -393,7 +405,7 @@ fn is_yaml_benign_str(v: &str) -> bool {
 fn is_yaml_special_str(v: &str) -> bool {
     matches!(
         v.to_ascii_lowercase().as_str(),
-        "y" | "yes" | "n" | "no" | "true" | "false" | "on" | "off" | "null"
+        "y" | "yes" | "n" | "no" | "true" | "false" | "on" | "off" | "null" | "nan" | "inf"
     )
 }
 
@@ -406,17 +418,14 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         }
     }
 
-    fn serialize_variant_name(
-        &mut self,
-        variant: &str,
-    ) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
+    fn serialize_variant_name(&mut self, variant: &str) -> Result<(), <E as Eat>::Error> {
         self.glut.eat("!")?;
         self.glut.eat(&urlencoding::encode(variant))?;
         self.glut.eat(" ")?;
         Ok(())
     }
 
-    fn indent(&mut self, extra: bool) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
+    fn indent(&mut self, extra: bool) -> Result<(), <E as Eat>::Error> {
         if self.multiline {
             self.glut.eat("\n")?;
             for _ in 0..self.level {
@@ -455,21 +464,33 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         }
     }
 
-    fn start(&mut self, start: &str) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
+    fn start(&mut self, start: &str) -> Result<(), <E as Eat>::Error> {
         self.glut.eat(start)?;
         Ok(())
     }
 
-    fn end(
-        mut self,
-        arg: &str,
-        empty: bool,
-    ) -> Result<(), <CurlySerializer<E> as Serializer>::Error> {
+    fn end(mut self, arg: &str, empty: bool) -> Result<(), <E as Eat>::Error> {
         if !empty {
             self.indent(false)?;
         }
         self.glut.eat(arg)?;
         Ok(())
+    }
+
+    fn serialize_float(
+        self,
+        is_nan: bool,
+        infinity: bool,
+        neg_infinity: bool,
+        v: impl Fn(&mut E) -> Result<(), <E as Eat>::Error>,
+    ) -> Result<(), <E as Eat>::Error> {
+        match (is_nan, infinity, neg_infinity) {
+            (true, false, false) => self.glut.eat(".nan"),
+            (false, true, false) => self.glut.eat(".inf"),
+            (false, false, true) => self.glut.eat("-.inf"),
+            (false, false, false) => v(self.glut),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -478,9 +499,7 @@ pub struct CurlySeq<'a, E> {
     ser: CurlySerializer<'a, E>,
 }
 impl<'e, E: Eat> CurlySeq<'e, E> {
-    fn new(
-        mut ser: CurlySerializer<'e, E>,
-    ) -> Result<Self, <CurlySerializer<'e, E> as Serializer>::Error> {
+    fn new(mut ser: CurlySerializer<'e, E>) -> Result<Self, <E as Eat>::Error> {
         CurlySerializer::start(&mut ser, "[")?;
         Ok(CurlySeq { first: true, ser })
     }
@@ -522,9 +541,7 @@ pub struct CurlyMap<'e, E> {
     ser: CurlySerializer<'e, E>,
 }
 impl<'e, E: Eat> CurlyMap<'e, E> {
-    fn new(
-        mut ser: CurlySerializer<'e, E>,
-    ) -> Result<Self, <CurlySerializer<'e, E> as Serializer>::Error> {
+    fn new(mut ser: CurlySerializer<'e, E>) -> Result<Self, <E as Eat>::Error> {
         CurlySerializer::start(&mut ser, "{")?;
         Ok(CurlyMap {
             first: true,
@@ -532,7 +549,7 @@ impl<'e, E: Eat> CurlyMap<'e, E> {
             ser,
         })
     }
-    fn next(&mut self, next: MapNext) -> Result<(), <CurlyMap<E> as SerializeMap>::Error> {
+    fn next(&mut self, next: MapNext) -> Result<(), <E as Eat>::Error> {
         use MapNext::*;
         match (self.next, next) {
             (Key, Value) => self.serialize_key(&())?,

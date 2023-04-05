@@ -8,13 +8,11 @@ fn trips<S: Serialize + DeserializeOwned + std::fmt::Debug + PartialEq>(s: S) {
 
     let mut out = String::new();
 
-    let ser = s.serialize(super::CurlySerializer {
-        level: 0,
-        glut: &mut out,
-    });
+    let ser = s.serialize(super::CurlySerializer::new(&mut out));
 
     println!("---\n# Serialized with curly_yaml\n{out}");
 
+    ser.unwrap();
     let de = serde_yaml::from_str::<S>(&out).unwrap();
     assert_eq!(de, s);
 }

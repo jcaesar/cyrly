@@ -8,7 +8,8 @@ use serde::Serialize;
 pub enum Value {
     Null,
     Bool(bool),
-    Number(u64),
+    Int(i64),
+    Float(f64),
     String(String),
     Sequence(Vec<Value>),
     Mapping(Vec<(Value, Value)>),
@@ -22,7 +23,8 @@ impl Into<serde_yaml::Value> for Value {
         match self {
             Value::Null => Null,
             Value::Bool(b) => Bool(b),
-            Value::Number(f) => Number(f.into()),
+            Value::Int(i) => Number(i.into()),
+            Value::Float(f) => Number(f.into()),
             Value::String(s) => String(s),
             Value::Sequence(s) => Sequence(s.into_iter().map(Into::into).collect()),
             Value::Mapping(s) => {
