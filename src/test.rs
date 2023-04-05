@@ -53,3 +53,8 @@ fn second() {
 
     trips(Foo::default())
 }
+
+#[test]
+fn and_i_quote_null() {
+    trips(serde_yaml::Value::String("null".to_string()))
+}

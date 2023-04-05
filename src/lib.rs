@@ -139,7 +139,7 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
             v.is_nan(),
             v == f32::INFINITY,
             v == f32::NEG_INFINITY,
-            |glut| glut.eat(ryu::Buffer::new().format_finite(v)),
+            |buf| buf.format_finite(v),
         )
     }
 
@@ -148,7 +148,7 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
             v.is_nan(),
             v == f64::INFINITY,
             v == f64::NEG_INFINITY,
-            |glut| glut.eat(ryu::Buffer::new().format_finite(v)),
+            |buf| buf.format_finite(v),
         )
     }
 
@@ -482,15 +482,17 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         is_nan: bool,
         infinity: bool,
         neg_infinity: bool,
-        v: impl Fn(&mut E) -> Result<(), <E as Eat>::Error>,
+        v: impl Fn(&mut ryu::Buffer) -> &str,
     ) -> Result<(), <E as Eat>::Error> {
-        match (is_nan, infinity, neg_infinity) {
-            (true, false, false) => self.glut.eat(".nan"),
-            (false, true, false) => self.glut.eat(".inf"),
-            (false, false, true) => self.glut.eat("-.inf"),
-            (false, false, false) => v(self.glut),
+        let mut buf = ryu::Buffer::new();
+        let s = match (is_nan, infinity, neg_infinity) {
+            (true, false, false) => ".nan",
+            (false, true, false) => ".inf",
+            (false, false, true) => "-.inf",
+            (false, false, false) => v(&mut buf),
             _ => unreachable!(),
-        }
+        };
+        self.glut.eat(s)
     }
 }
 
