@@ -3,9 +3,13 @@ name = "cyrly"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["std"]
+std = ["serde/std"]
+
 [dependencies]
 ryu = "1.0.13"
-serde = "1.0.159"
+serde = { version = "1.0.159", default-features = false }
 urlencoding = "2.1.2"
 
 [dev-dependencies]

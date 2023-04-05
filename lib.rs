@@ -1,29 +1,72 @@
+#![doc = include_str!("./README.md")]
 #![forbid(unsafe_code)]
+#![no_std]
 
 #[cfg(test)]
 mod test;
 
+extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
+
+use alloc::{
+    format,
+    string::{String, ToString},
+};
 use serde::{
     ser::{
         self, SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
         SerializeTupleStruct, SerializeTupleVariant,
     },
-    Serializer,
+    Serialize, Serializer,
 };
 
+/// Serialize the given data structure as a string
+pub fn to_string<T: Serialize + ?Sized>(value: &T) -> Result<String, core::fmt::Error> {
+    let mut out = String::new();
+    value.serialize(CurlySerializer::new(&mut out))?;
+    Ok(out)
+}
+
+#[cfg(feature = "std")]
+/// Serialize the given data structure into the stream
+///
+/// Note: the output will be written in small chunks, often single bytes.
+/// This can lead to terrible performance when the write is directly flushed to the operating system.
+/// If in doubt, use a [BufWriter][std::io::BufWriter].
+pub fn to_writer<W, T>(writer: W, value: &T) -> Result<(), std::io::Error>
+where
+    W: std::io::Write,
+    T: ?Sized + Serialize,
+{
+    value
+        .serialize(CurlySerializer::new(&mut write::WriteEat(writer)))
+        .map_err(|write::WriteEatError(e)| e)
+}
+
+/// Main serializer implementation
+///
+/// Note that this serializer produces YAML tags for enums, e.g. `enum Foo { Bar(i32) }` will result in `!Bar 42`.
+/// See [serde_yaml::with](https://docs.rs/serde_yaml/latest/serde_yaml/with/index.html) for configuration options.
 pub struct CurlySerializer<'a, E> {
-    level: usize,
+    /// Use more than one line (defaults to true in `new`)
     pub multiline: bool,
+    level: usize,
     glut: &'a mut E,
 }
 
+/// Helper trait for data output from serializer
+///
+/// Normally, you can just rely on [to_string] or [to_writer]
 pub trait Eat {
+    /// Error shared with [CurlySerializer]
     type Error: ser::Error;
+    /// Output some tokens
     fn eat(&mut self, data: &str) -> Result<(), Self::Error>;
 }
 
 impl Eat for String {
-    type Error = std::fmt::Error;
+    type Error = core::fmt::Error;
 
     fn eat(&mut self, data: &str) -> Result<(), Self::Error> {
         self.push_str(data);
@@ -31,45 +74,56 @@ impl Eat for String {
     }
 }
 
-pub struct WriteEat<T>(T);
-impl<T: std::io::Write> Eat for WriteEat<T> {
-    type Error = WriteEatError;
+#[cfg(feature = "std")]
+/// Adaptors for [std::io::Write]
+pub mod write {
+    extern crate std;
+    use super::*;
 
-    fn eat(&mut self, data: &str) -> Result<(), Self::Error> {
-        self.0.write_all(data.as_bytes()).map_err(WriteEatError)
+    /// Write wrapper
+    pub struct WriteEat<T>(pub T);
+    impl<T: std::io::Write> Eat for WriteEat<T> {
+        type Error = WriteEatError;
+
+        fn eat(&mut self, data: &str) -> Result<(), Self::Error> {
+            self.0.write_all(data.as_bytes()).map_err(WriteEatError)
+        }
     }
-}
-#[derive(Debug)]
-pub struct WriteEatError(std::io::Error);
-impl std::fmt::Display for WriteEatError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+
+    /// Error wrapper
+    #[derive(Debug)]
+    pub struct WriteEatError(pub std::io::Error);
+    impl std::fmt::Display for WriteEatError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            self.0.fmt(f)
+        }
     }
-}
-impl std::error::Error for WriteEatError {}
-impl serde::ser::Error for WriteEatError {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
-        WriteEatError(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("{msg}"),
-        ))
+    impl std::error::Error for WriteEatError {}
+    impl serde::ser::Error for WriteEatError {
+        fn custom<T>(msg: T) -> Self
+        where
+            T: std::fmt::Display,
+        {
+            WriteEatError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("{msg}"),
+            ))
+        }
     }
 }
 
 struct ShortEater(String, usize);
 #[derive(Debug)]
 struct Fallible;
-impl std::fmt::Display for Fallible {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Fallible {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         "[error not stored]".fmt(f)
     }
 }
+#[cfg(feature = "std")]
 impl std::error::Error for Fallible {}
 impl ser::Error for Fallible {
-    fn custom<T: std::fmt::Display>(_: T) -> Self {
+    fn custom<T: core::fmt::Display>(_: T) -> Self {
         Self
     }
 }
@@ -97,6 +151,13 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
     type SerializeMap = CurlyMap<'e, E>;
     type SerializeStruct = CurlyMap<'e, E>;
     type SerializeStructVariant = CurlyMap<'e, E>;
+
+    fn collect_str<T: core::fmt::Display + ?Sized>(
+        self,
+        v: &T,
+    ) -> Result<<Self as Serializer>::Ok, <Self as Serializer>::Error> {
+        self.glut.eat(&format!("{}", v))
+    }
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         self.glut.eat(&v.to_string())
@@ -410,6 +471,7 @@ fn is_yaml_special_str(v: &str) -> bool {
 }
 
 impl<'e, E: Eat> CurlySerializer<'e, E> {
+    /// Create a new instance.
     pub fn new(glut: &'e mut E) -> Self {
         Self {
             level: 0,
@@ -448,6 +510,7 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         }
     }
 
+    /// Convenience function. Builders are overrated.
     pub fn multiline(self) -> Self {
         CurlySerializer {
             level: self.level,
@@ -456,6 +519,7 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         }
     }
 
+    /// Convenience function. Builders are overrated.
     pub fn oneline(self) -> Self {
         CurlySerializer {
             level: self.level,
@@ -496,6 +560,7 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
     }
 }
 
+#[doc(hidden)]
 pub struct CurlySeq<'a, E> {
     first: bool,
     ser: CurlySerializer<'a, E>,
@@ -537,6 +602,7 @@ enum MapNext {
     Key,
     Value,
 }
+#[doc(hidden)]
 pub struct CurlyMap<'e, E> {
     next: MapNext,
     first: bool,

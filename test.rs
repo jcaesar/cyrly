@@ -1,3 +1,9 @@
+use std::println;
+
+use alloc::{
+    string::{String, ToString},
+    vec,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 fn trips<S: Serialize + DeserializeOwned + std::fmt::Debug + PartialEq>(s: S) {
