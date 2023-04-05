@@ -217,37 +217,103 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
         self.serialize_str(&[v].iter().collect::<String>())
     }
 
-    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+    fn serialize_str(mut self, v: &str) -> Result<Self::Ok, Self::Error> {
         if is_yaml_special_str(v) {
             self.glut.eat("\"")?;
             self.glut.eat(v)?;
             self.glut.eat("\"")?;
-        } else if is_yaml_benign_str(v) {
-            self.glut.eat(v)?;
-        } else {
-            self.glut.eat("\"")?;
-            for c in v.chars() {
-                match c {
-                    '\\' => self.glut.eat("\\\\")?,
-                    '"' => self.glut.eat("\\\"")?,
-                    '\r' => self.glut.eat("\\r")?,
-                    '\n' => self.glut.eat("\\n")?,
-                    c if c.is_ascii_graphic() || c.is_alphanumeric() => {
-                        self.glut.eat(c.encode_utf8(&mut [0u8; 4]))?;
+        } else if self.multiline {
+            if let Some(shawt) = self.serialize_short(v) {
+                self.glut.eat(&shawt)?;
+            } else {
+                self.glut.eat("\"")?;
+                let mut chars_on_line = usize::MAX;
+                let mut toks = WordOrSpace(v).peekable();
+                while let Some(tok) = toks.next() {
+                    match tok {
+                        " " => {
+                            // Newline "early" if the next word wouldn't fit onto the current line - but only up to some sensible length
+                            // Working with length here is a crude approximation
+                            let next_len = toks
+                                .peek()
+                                .map(|s| s.len())
+                                .filter(|&l| l < 60)
+                                .unwrap_or(0);
+                            if chars_on_line.saturating_add(next_len) >= 80 {
+                                assert!(self.multiline);
+                                chars_on_line = 0;
+                                self.indent(false)?;
+                                match toks.peek() {
+                                    Some(&" ") => {
+                                        self.glut.eat(" \\ ")?;
+                                        toks.next();
+                                    }
+                                    _ => self.glut.eat("  ")?,
+                                }
+                            } else {
+                                match toks.peek() {
+                                    Some(&" ") => {
+                                        self.glut.eat(" ")?;
+                                        while toks.peek() == Some(&" ") {
+                                            self.glut.eat(" ")?;
+                                            if chars_on_line >= 80 {
+                                                self.glut.eat("\\")?;
+                                                break;
+                                            }
+                                            chars_on_line += 1;
+                                            toks.next();
+                                        }
+                                    }
+                                    Some(_) => self.glut.eat(tok)?,
+                                    None => self.indent(false)?,
+                                }
+                            }
+                        }
+                        "\n" => {
+                            self.glut.eat("\\n")?;
+                            chars_on_line = usize::MAX;
+                            match toks.peek() {
+                                Some(&"\n") => {
+                                    self.glut.eat("\\")?;
+                                    self.indent(true)?
+                                }
+                                None => {
+                                    self.glut.eat("\\")?;
+                                    self.indent(false)?
+                                }
+                                _ => (),
+                            }
+                        }
+                        a => {
+                            for c in a.chars() {
+                                if chars_on_line >= 80 {
+                                    self.glut.eat("\\")?;
+                                    self.indent(true)?;
+                                    chars_on_line = 0;
+                                }
+                                assert!(c != ' ');
+                                self.serialize_char_in_string(c)?;
+                                chars_on_line += 1;
+                            }
+                            if toks.peek().is_none() {
+                                self.glut.eat("\\")?;
+                                self.indent(false)?;
+                            }
+                        }
                     }
-                    c => match &*c.encode_utf16(&mut [0u16; 2]) {
-                        &[tb] => {
-                            self.glut.eat("\\u")?;
-                            self.glut.eat(&format!("{:04x}", tb))?;
-                        }
-                        _ => {
-                            self.glut.eat("\\U")?;
-                            self.glut.eat(&format!("{:08x}", c as u32))?;
-                        }
-                    },
                 }
+                self.glut.eat("\"")?;
             }
-            self.glut.eat("\"")?;
+        } else {
+            if is_yaml_benign_str(v) {
+                self.glut.eat(v)?;
+            } else {
+                self.glut.eat("\"")?;
+                for c in v.chars() {
+                    self.serialize_char_in_string(c)?;
+                }
+                self.glut.eat("\"")?;
+            }
         }
         Ok(())
     }
@@ -558,6 +624,41 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         };
         self.glut.eat(s)
     }
+
+    fn serialize_short<T: Serialize + ?Sized>(&self, key: &T) -> Option<String> {
+        let mut short = ShortEater(String::new(), 80);
+        let res = key.serialize(CurlySerializer {
+            glut: &mut short,
+            multiline: false,
+            level: self.level,
+        });
+        let res = res.is_ok().then_some(short.0);
+        res
+    }
+
+    fn serialize_char_in_string(&mut self, c: char) -> Result<(), <E as Eat>::Error> {
+        Ok(match c {
+            '\0' => self.glut.eat("\\0")?,
+            '\\' => self.glut.eat("\\\\")?,
+            '"' => self.glut.eat("\\\"")?,
+            '\r' => self.glut.eat("\\r")?,
+            '\n' => self.glut.eat("\\n")?,
+            ' ' => self.glut.eat(" ")?,
+            c if c.is_ascii_graphic() || c.is_alphanumeric() => {
+                self.glut.eat(c.encode_utf8(&mut [0u8; 4]))?;
+            }
+            c => match &*c.encode_utf16(&mut [0u16; 2]) {
+                &[tb] => {
+                    self.glut.eat("\\u")?;
+                    self.glut.eat(&format!("{:04x}", tb))?;
+                }
+                _ => {
+                    self.glut.eat("\\U")?;
+                    self.glut.eat(&format!("{:08x}", c as u32))?;
+                }
+            },
+        })
+    }
 }
 
 #[doc(hidden)]
@@ -649,13 +750,7 @@ impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
         self.ser.indent(true)?;
 
         if self.ser.multiline {
-            let mut short = ShortEater(String::new(), 80);
-            let res = key.serialize(CurlySerializer {
-                glut: &mut short,
-                multiline: false,
-                level: self.ser.level,
-            });
-            let res = res.is_ok().then_some(short.0);
+            let res = self.ser.serialize_short(key);
             if let Some(singleline) = res {
                 self.ser.glut.eat(&singleline)?;
             } else {
@@ -684,5 +779,42 @@ impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         CurlySerializer::end(self.ser, "}", self.first)
+    }
+}
+
+struct WordOrSpace<'a>(&'a str);
+
+impl<'a> Iterator for WordOrSpace<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut chars = self.0.char_indices();
+        match chars.next() {
+            None => None,
+            Some((_, c)) if c.is_whitespace() => match chars.next() {
+                Some((i, _)) => {
+                    let ret = &self.0[..i];
+                    self.0 = &self.0[i..];
+                    return Some(ret);
+                }
+                None => {
+                    let ret = self.0;
+                    self.0 = "";
+                    return Some(ret);
+                }
+            },
+            _ => {
+                while let Some((i, c)) = chars.next() {
+                    if c.is_whitespace() {
+                        let ret = &self.0[..i];
+                        self.0 = &self.0[i..];
+                        return Some(ret);
+                    }
+                }
+                let ret = self.0;
+                self.0 = "";
+                return Some(ret);
+            }
+        }
     }
 }

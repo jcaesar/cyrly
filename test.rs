@@ -64,3 +64,11 @@ fn second() {
 fn and_i_quote_null() {
     trips(serde_yaml::Value::String("null".to_string()))
 }
+
+#[test]
+fn two_spaces_eaten() {
+    trips(
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            .to_string(),
+    );
+}

@@ -1,23 +1,28 @@
 # cyrly
 
-A serde-based YAML serializer for Rust with an unusual output format.
+A serde-based YAML serializer for Rust with an unusual output style.
 
 ## Usage
 
-```rust
+```rust,ignore
 cyrly::to_string(some_val)?
 ```
 will prdouce something like
 ```yaml
 {
-  { 42: 1336 }: "non-string\u0020keys",
-  "three\u0020different\u0020string\u0020styles": [
+  { 42: 1336 }: "non-string keys",
+  "three different string styles": [
     plain,
-    "single-line\u0020or\u0020\"dangerous\"\u0020stuff\u0020like",
-    "multiline\nnicely\u0020readable",
+    "single-line strings",
+    "\
+      multi-line strings are\n\
+      acceptably readable\n\
+      \n\
+      also, yaml 1.1/1.2 ambiguities are quoted:
+    ",
     "oFf",
   ],
-  look: "trailing\u0020comma",
+  look: "trailing comma",
 }
 ```
 
