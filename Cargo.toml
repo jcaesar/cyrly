@@ -1,5 +1,5 @@
 [package]
-name = "curly_yaml"
+name = "cyrly"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,6 +12,8 @@ urlencoding = "2.1.2"
 serde = { version = "1.0.159", features = ["derive"] }
 serde_yaml = "0.9.19"
 
-[[bin]]
-name = "cyrly"
-path = "src/bin.rs"
+[lib]
+path = "lib.rs"
+
+[workspace]
+members = ["bin"]

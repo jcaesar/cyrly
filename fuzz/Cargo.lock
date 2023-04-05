@@ -27,23 +27,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "curly_yaml"
+name = "cyrly"
 version = "0.1.0"
 dependencies = [
  "ryu",
  "serde",
  "urlencoding",
-]
-
-[[package]]
-name = "curly_yaml-fuzz"
-version = "0.0.0"
-dependencies = [
- "arbitrary",
- "curly_yaml",
- "libfuzzer-sys",
- "serde",
- "serde_yaml",
 ]
 
 [[package]]
@@ -55,6 +44,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "fuzz"
+version = "0.0.0"
+dependencies = [
+ "arbitrary",
+ "cyrly",
+ "libfuzzer-sys",
+ "serde",
+ "serde_yaml",
 ]
 
 [[package]]

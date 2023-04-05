@@ -1,0 +1,13 @@
+[package]
+name = "cyrly-conv"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "cyrly"
+path = "main.rs"
+
+[dependencies]
+cyrly = { path = ".." }
+serde = "1.0.159"
+serde_yaml = "0.9.19"

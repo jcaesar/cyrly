@@ -54,14 +54,14 @@ fuzz_target!(|problem: Problem| {
 
     let mut out = String::new();
 
-    let mut curl = curly_yaml::CurlySerializer::new(&mut out);
+    let mut curl = cyrly::CurlySerializer::new(&mut out);
     curl.multiline = problem.multiline;
     data.serialize(curl).unwrap();
 
     let de = serde_yaml::from_str::<serde_yaml::Value>(&out);
     if cfg!(feature = "debuglog") {
         println!("---\n# Serialized with serde_yaml\n{}\n# END", yamlser);
-        println!("---\n# Serialized with curly_yaml\n{out}\n# END");
+        println!("---\n# Serialized with cyrly\n{out}\n# END");
         dbg!(&data, yamlde, problem.multiline, de.as_ref().unwrap());
     }
     if out.lines().any(|l| l.len() > 500) {

@@ -1,4 +1,4 @@
-use curly_yaml::{CurlySerializer, Eat};
+use cyrly::{CurlySerializer, Eat};
 use serde::Serialize;
 use serde_yaml::Value;
 use std::{

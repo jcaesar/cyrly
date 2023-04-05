@@ -30,7 +30,7 @@ fuzz_target!(|data: &str| {
 
     let mut out = String::new();
 
-    val.serialize(curly_yaml::CurlySerializer::new(&mut out))
+    val.serialize(cyrly::CurlySerializer::new(&mut out))
         .unwrap();
     let de = serde_yaml::from_str::<serde_yaml::Value>(&out);
 
@@ -39,7 +39,7 @@ fuzz_target!(|data: &str| {
             "---\n# Serialized with serde_yaml\n{}\n\n",
             serde_yaml::to_string(&data).unwrap()
         );
-        println!("---\n# Serialized with curly_yaml\n{out}");
+        println!("---\n# Serialized with cyrly\n{out}");
         dbg!(&data, &val, &de);
     }
     assert_eq!(val, de.ok().unwrap())
