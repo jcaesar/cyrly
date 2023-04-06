@@ -1,7 +1,15 @@
 [package]
 name = "cyrly"
+description = "A serde-based YAML serializer for Rust with an unusual output style"
 version = "0.1.0"
 edition = "2021"
+authors = ["Julius Michaelis <gitter@liftm.de>"]
+repository = "https://github.com/jcaesar/cyrly"
+license = "MIT"
+keywords = ["yaml", "serde", "serialization"]
+categories = ["encoding", "parser-implementations"]
+readme = "README.md"
+rust-version = "1.62"
 
 [features]
 default = ["std"]
