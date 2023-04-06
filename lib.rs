@@ -53,6 +53,7 @@ pub struct CurlySerializer<'a, E> {
     pub multiline: bool,
     level: usize,
     glut: &'a mut E,
+    max_output: Option<&'a mut usize>,
 }
 
 /// Helper trait for data output from serializer
@@ -112,35 +113,6 @@ pub mod write {
     }
 }
 
-struct ShortEater(String, usize);
-#[derive(Debug)]
-struct Fallible;
-impl core::fmt::Display for Fallible {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        "[error not stored]".fmt(f)
-    }
-}
-#[cfg(feature = "std")]
-impl std::error::Error for Fallible {}
-impl ser::Error for Fallible {
-    fn custom<T: core::fmt::Display>(_: T) -> Self {
-        Self
-    }
-}
-impl Eat for ShortEater {
-    type Error = Fallible;
-
-    fn eat(&mut self, data: &str) -> Result<(), Self::Error> {
-        for char in data.chars() {
-            if self.1.checked_sub(1).map(|u| self.1 = u).is_none() {
-                return Err(Fallible);
-            }
-            self.0.push(char);
-        }
-        Ok(())
-    }
-}
-
 impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
     type Ok = ();
     type Error = <E as Eat>::Error;
@@ -156,43 +128,43 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
         self,
         v: &T,
     ) -> Result<<Self as Serializer>::Ok, <Self as Serializer>::Error> {
-        self.glut.eat(&format!("{}", v))
+        self.serialize_str(&v.to_string())
     }
 
-    fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_bool(mut self, v: bool) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_i8(mut self, v: i8) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_i16(mut self, v: i16) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_i32(mut self, v: i32) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_i64(mut self, v: i64) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_u8(mut self, v: u8) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_u16(mut self, v: u16) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_u32(mut self, v: u32) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
-    fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat(&v.to_string())
+    fn serialize_u64(mut self, v: u64) -> Result<Self::Ok, Self::Error> {
+        self.eat(&v.to_string())
     }
 
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
@@ -219,14 +191,14 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
 
     fn serialize_str(mut self, v: &str) -> Result<Self::Ok, Self::Error> {
         if is_yaml_special_str(v) {
-            self.glut.eat("\"")?;
-            self.glut.eat(v)?;
-            self.glut.eat("\"")?;
+            self.eat("\"")?;
+            self.eat(v)?;
+            self.eat("\"")?;
         } else if self.multiline {
-            if let Some(shawt) = self.serialize_short(v) {
-                self.glut.eat(&shawt)?;
+            if let Some(shawt) = self.serialize_short(v, 80) {
+                self.eat(&shawt)?;
             } else {
-                self.glut.eat("\"")?;
+                self.eat("\"")?;
                 let mut chars_on_line = usize::MAX;
                 let mut toks = WordOrSpace(v).peekable();
                 while let Some(tok) = toks.next() {
@@ -245,40 +217,40 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
                                 self.indent(false)?;
                                 match toks.peek() {
                                     Some(&" ") => {
-                                        self.glut.eat(" \\ ")?;
+                                        self.eat(" \\ ")?;
                                         toks.next();
                                     }
-                                    _ => self.glut.eat("  ")?,
+                                    _ => self.eat("  ")?,
                                 }
                             } else {
                                 match toks.peek() {
                                     Some(&" ") => {
-                                        self.glut.eat(" ")?;
+                                        self.eat(" ")?;
                                         while toks.peek() == Some(&" ") {
-                                            self.glut.eat(" ")?;
+                                            self.eat(" ")?;
                                             if chars_on_line >= 80 {
-                                                self.glut.eat("\\")?;
+                                                self.eat("\\")?;
                                                 break;
                                             }
                                             chars_on_line += 1;
                                             toks.next();
                                         }
                                     }
-                                    Some(_) => self.glut.eat(tok)?,
+                                    Some(_) => self.eat(tok)?,
                                     None => self.indent(false)?,
                                 }
                             }
                         }
                         "\n" => {
-                            self.glut.eat("\\n")?;
+                            self.eat("\\n")?;
                             chars_on_line = usize::MAX;
                             match toks.peek() {
                                 Some(&"\n") => {
-                                    self.glut.eat("\\")?;
+                                    self.eat("\\")?;
                                     self.indent(true)?
                                 }
                                 None => {
-                                    self.glut.eat("\\")?;
+                                    self.eat("\\")?;
                                     self.indent(false)?
                                 }
                                 _ => (),
@@ -287,7 +259,7 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
                         a => {
                             for c in a.chars() {
                                 if chars_on_line >= 80 {
-                                    self.glut.eat("\\")?;
+                                    self.eat("\\")?;
                                     self.indent(true)?;
                                     chars_on_line = 0;
                                 }
@@ -296,23 +268,23 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
                                 chars_on_line += 1;
                             }
                             if toks.peek().is_none() {
-                                self.glut.eat("\\")?;
+                                self.eat("\\")?;
                                 self.indent(false)?;
                             }
                         }
                     }
                 }
-                self.glut.eat("\"")?;
+                self.eat("\"")?;
             }
         } else {
             if is_yaml_benign_str(v) {
-                self.glut.eat(v)?;
+                self.eat(v)?;
             } else {
-                self.glut.eat("\"")?;
+                self.eat("\"")?;
                 for c in v.chars() {
                     self.serialize_char_in_string(c)?;
                 }
-                self.glut.eat("\"")?;
+                self.eat("\"")?;
             }
         }
         Ok(())
@@ -325,8 +297,8 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
         SerializeSeq::end(seq)
     }
 
-    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        self.glut.eat("null")
+    fn serialize_none(mut self) -> Result<Self::Ok, Self::Error> {
+        self.eat("null")
     }
 
     fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
@@ -543,27 +515,28 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
             level: 0,
             multiline: true,
             glut,
+            max_output: None,
         }
     }
 
     fn serialize_variant_name(&mut self, variant: &str) -> Result<(), <E as Eat>::Error> {
-        self.glut.eat("!")?;
-        self.glut.eat(&urlencoding::encode(variant))?;
-        self.glut.eat(" ")?;
+        self.eat("!")?;
+        self.eat(&urlencoding::encode(variant))?;
+        self.eat(" ")?;
         Ok(())
     }
 
     fn indent(&mut self, extra: bool) -> Result<(), <E as Eat>::Error> {
         if self.multiline {
-            self.glut.eat("\n")?;
+            self.eat("\n")?;
             for _ in 0..self.level {
-                self.glut.eat("  ")?;
+                self.eat("  ")?;
             }
             if extra {
-                self.glut.eat("  ")?;
+                self.eat("  ")?;
             }
         } else {
-            self.glut.eat(" ")?;
+            self.eat(" ")?;
         }
         Ok(())
     }
@@ -573,29 +546,28 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
             level: self.level + 1,
             multiline: self.multiline,
             glut: self.glut,
+            max_output: self.max_output.as_deref_mut(),
         }
     }
 
     /// Convenience function. Builders are overrated.
     pub fn multiline(self) -> Self {
         CurlySerializer {
-            level: self.level,
             multiline: true,
-            glut: self.glut,
+            ..self
         }
     }
 
     /// Convenience function. Builders are overrated.
     pub fn oneline(self) -> Self {
         CurlySerializer {
-            level: self.level,
             multiline: false,
-            glut: self.glut,
+            ..self
         }
     }
 
     fn start(&mut self, start: &str) -> Result<(), <E as Eat>::Error> {
-        self.glut.eat(start)?;
+        self.eat(start)?;
         Ok(())
     }
 
@@ -603,12 +575,12 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
         if !empty {
             self.indent(false)?;
         }
-        self.glut.eat(arg)?;
+        self.eat(arg)?;
         Ok(())
     }
 
     fn serialize_float(
-        self,
+        mut self,
         is_nan: bool,
         infinity: bool,
         neg_infinity: bool,
@@ -622,42 +594,65 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
             (false, false, false) => v(&mut buf),
             _ => unreachable!(),
         };
-        self.glut.eat(s)
+        self.eat(s)
     }
 
-    fn serialize_short<T: Serialize + ?Sized>(&self, key: &T) -> Option<String> {
-        let mut short = ShortEater(String::new(), 80);
+    fn serialize_short<T: Serialize + ?Sized>(
+        &mut self,
+        key: &T,
+        max_len: usize,
+    ) -> Option<String> {
+        let max_len = match self.max_output {
+            Some(&mut max_output) if max_output < max_len && !self.multiline => return None,
+            Some(&mut max_output) if max_output < max_len => max_output,
+            _ => max_len,
+        };
+        let mut max_short_output = max_len;
+        let mut short = String::with_capacity(max_len);
         let res = key.serialize(CurlySerializer {
             glut: &mut short,
             multiline: false,
             level: self.level,
+            max_output: Some(&mut max_short_output),
         });
-        let res = res.is_ok().then_some(short.0);
-        res
+        let res = res.is_ok().then_some(short)?;
+        assert!(res.len() <= max_len);
+        Some(res)
     }
 
     fn serialize_char_in_string(&mut self, c: char) -> Result<(), <E as Eat>::Error> {
         Ok(match c {
-            '\0' => self.glut.eat("\\0")?,
-            '\\' => self.glut.eat("\\\\")?,
-            '"' => self.glut.eat("\\\"")?,
-            '\r' => self.glut.eat("\\r")?,
-            '\n' => self.glut.eat("\\n")?,
-            ' ' => self.glut.eat(" ")?,
+            '\0' => self.eat("\\0")?,
+            '\\' => self.eat("\\\\")?,
+            '"' => self.eat("\\\"")?,
+            '\r' => self.eat("\\r")?,
+            '\n' => self.eat("\\n")?,
+            ' ' => self.eat(" ")?,
             c if c.is_ascii_graphic() || c.is_alphanumeric() => {
-                self.glut.eat(c.encode_utf8(&mut [0u8; 4]))?;
+                self.eat(c.encode_utf8(&mut [0u8; 4]))?;
             }
             c => match &*c.encode_utf16(&mut [0u16; 2]) {
                 &[tb] => {
-                    self.glut.eat("\\u")?;
-                    self.glut.eat(&format!("{:04x}", tb))?;
+                    self.eat("\\u")?;
+                    self.eat(&format!("{:04x}", tb))?;
                 }
                 _ => {
-                    self.glut.eat("\\U")?;
-                    self.glut.eat(&format!("{:08x}", c as u32))?;
+                    self.eat("\\U")?;
+                    self.eat(&format!("{:08x}", c as u32))?;
                 }
             },
         })
+    }
+
+    fn eat(&mut self, v: &str) -> Result<(), <E as Eat>::Error> {
+        if let Some(max_len) = self.max_output.as_mut() {
+            if v.len() > **max_len {
+                return Err(ser::Error::custom("internal: length exceeded"));
+            }
+            **max_len = max_len.saturating_sub(v.len());
+        }
+        self.glut.eat(v)?;
+        Ok(())
     }
 }
 
@@ -683,12 +678,12 @@ impl<E: Eat> SerializeSeq for CurlySeq<'_, E> {
     {
         match self.ser.multiline || self.first {
             true => self.first = false,
-            false => self.ser.glut.eat(",")?,
+            false => self.ser.eat(",")?,
         }
         self.ser.indent(true)?;
         value.serialize(self.ser.next_level())?;
         if self.ser.multiline {
-            self.ser.glut.eat(",")?;
+            self.ser.eat(",")?;
         }
         Ok(())
     }
@@ -745,21 +740,30 @@ impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
         self.next(MapNext::Key)?;
         match self.ser.multiline || self.first {
             true => self.first = false,
-            false => self.ser.glut.eat(",")?,
+            false => self.ser.eat(",")?,
         }
         self.ser.indent(true)?;
 
-        if self.ser.multiline {
-            let res = self.ser.serialize_short(key);
-            if let Some(singleline) = res {
-                self.ser.glut.eat(&singleline)?;
-            } else {
-                self.ser.glut.eat("? ")?;
-                key.serialize(self.ser.next_level())?;
+        let shortlen = match self.ser.multiline {
+            true => 80,   // On multiline,
+            false => 512, // On singliline, YAML 1.1 forbids flow keys longer than 1024 without "?". Approximate.
+        };
+        if let Some(singleline) = self.ser.serialize_short(key, shortlen) {
+            self.ser.eat(&singleline)?;
+        } else {
+            if self.ser.multiline
+                || self
+                    .ser
+                    .max_output
+                    .as_ref()
+                    .map_or(true, |x| **x > shortlen)
+            {
+                self.ser.eat("? ")?;
+            }
+            key.serialize(self.ser.next_level())?;
+            if self.ser.multiline {
                 self.ser.indent(true)?;
             }
-        } else {
-            key.serialize(self.ser.next_level())?;
         }
         Ok(())
     }
@@ -769,10 +773,10 @@ impl<E: Eat> SerializeMap for CurlyMap<'_, E> {
         T: serde::Serialize,
     {
         self.next(MapNext::Value)?;
-        self.ser.glut.eat(": ")?;
+        self.ser.eat(": ")?;
         value.serialize(self.ser.next_level())?;
         if self.ser.multiline {
-            self.ser.glut.eat(",")?;
+            self.ser.eat(",")?;
         }
         Ok(())
     }

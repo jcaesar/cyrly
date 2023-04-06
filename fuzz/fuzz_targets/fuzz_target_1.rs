@@ -64,9 +64,6 @@ fuzz_target!(|problem: Problem| {
         println!("---\n# Serialized with cyrly\n{out}\n# END");
         dbg!(&data, yamlde, problem.multiline, de.as_ref().unwrap());
     }
-    if out.lines().any(|l| l.len() > 500) {
-        return; // Seems serde_yaml chokes on some overly long lines
-    }
     if !de.as_ref().map_or(false, |de| de == &data) {
         panic!()
     }
