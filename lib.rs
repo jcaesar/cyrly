@@ -276,16 +276,14 @@ impl<'e, E: Eat> Serializer for CurlySerializer<'e, E> {
                 }
                 self.eat("\"")?;
             }
+        } else if is_yaml_benign_str(v) {
+            self.eat(v)?;
         } else {
-            if is_yaml_benign_str(v) {
-                self.eat(v)?;
-            } else {
-                self.eat("\"")?;
-                for c in v.chars() {
-                    self.serialize_char_in_string(c)?;
-                }
-                self.eat("\"")?;
+            self.eat("\"")?;
+            for c in v.chars() {
+                self.serialize_char_in_string(c)?;
             }
+            self.eat("\"")?;
         }
         Ok(())
     }
@@ -621,7 +619,7 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
     }
 
     fn serialize_char_in_string(&mut self, c: char) -> Result<(), <E as Eat>::Error> {
-        Ok(match c {
+        match c {
             '\0' => self.eat("\\0")?,
             '\\' => self.eat("\\\\")?,
             '"' => self.eat("\\\"")?,
@@ -641,7 +639,8 @@ impl<'e, E: Eat> CurlySerializer<'e, E> {
                     self.eat(&format!("{:08x}", c as u32))?;
                 }
             },
-        })
+        };
+        Ok(())
     }
 
     fn eat(&mut self, v: &str) -> Result<(), <E as Eat>::Error> {
@@ -799,16 +798,16 @@ impl<'a> Iterator for WordOrSpace<'a> {
                 Some((i, _)) => {
                     let ret = &self.0[..i];
                     self.0 = &self.0[i..];
-                    return Some(ret);
+                    Some(ret)
                 }
                 None => {
                     let ret = self.0;
                     self.0 = "";
-                    return Some(ret);
+                    Some(ret)
                 }
             },
             _ => {
-                while let Some((i, c)) = chars.next() {
+                for (i, c) in chars {
                     if c.is_whitespace() {
                         let ret = &self.0[..i];
                         self.0 = &self.0[i..];
@@ -817,7 +816,7 @@ impl<'a> Iterator for WordOrSpace<'a> {
                 }
                 let ret = self.0;
                 self.0 = "";
-                return Some(ret);
+                Some(ret)
             }
         }
     }
